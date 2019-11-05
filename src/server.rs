@@ -1,3 +1,4 @@
+use std::thread;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 use std::collections::HashMap;
@@ -39,7 +40,7 @@ impl Server {
         let addr = format!("{}:{}", self.addr.0, self.addr.1);
         let listener = TcpListener::bind(addr).unwrap();
         for stream in listener.incoming() {
-            handle_connection(stream.unwrap());
+            thread::spawn(|| handle_connection(stream.unwrap()));
         }
     }
 }
@@ -68,6 +69,8 @@ fn parse_request(request: &str) -> Result<Request, HTTPError> {
     };
     let mut headers: HashMap<String, String> = HashMap::new();
     let hdr_lines: Vec<&str> = reqfields[0].split("\r\n").collect();
+    // Populate headers map, starting from 1 as index to skip the first line which
+    // contains just the HTTP method and route
     for i in 1..hdr_lines.len() {
         let kv: Vec<&str> = hdr_lines[i].split(":").collect();
         headers.insert(kv[0].to_string(), kv[1].to_string());
@@ -95,19 +98,27 @@ fn handle_connection(mut stream: TcpStream) {
     let mut buffer = [0; 512];
     stream.read(&mut buffer).unwrap();
     let reqstring = String::from_utf8_lossy(&buffer[..]);
-    let request = match parse_request(&reqstring) {
-        Ok(_) => {
-            let response = "HTTP/1.1 200 OK\r\n\r\n";
-            send_response(stream, response.as_bytes());
-        },
-        Err(e) => {
-            let response = match e {
-                HTTPError::NotFound => "HTTP/1.1 404 NOT FOUND\r\n\r\n",
-                HTTPError::MethodNotAllowed => "HTTP/1.1 405 METHOD NOT ALLOWED\r\n\r\n"
-            };
-            send_response(stream, response.as_bytes());
-        }
+    let response = match parse_request(&reqstring) {
+        Ok(r) => handle_request(r),
+        Err(e) => handle_error(e)
     };
+    send_response(stream, response.as_bytes());
+}
+
+fn handle_error(err: HTTPError) -> String {
+    match err {
+        HTTPError::NotFound => "HTTP/1.1 404 NOT FOUND\r\n\r\n".to_string(),
+        HTTPError::MethodNotAllowed => "HTTP/1.1 405 METHOD NOT ALLOWED\r\n\r\n".to_string()
+    }
+}
+
+fn handle_request(request: Request) -> String {
+    match request.method {
+        HTTP::Get => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
+        HTTP::Post => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
+        HTTP::Put => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
+        HTTP::Delete => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
+    }
 }
 
 fn send_response(mut stream: TcpStream, response: &[u8]) {
