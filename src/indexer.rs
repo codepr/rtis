@@ -13,8 +13,8 @@ impl Indexer {
         self.documents.push((document, freq));
     }
 
-    pub fn search(&self, text: &str) {
-        let frequency: HashMap<String, u32> = term_frequency(text);
+    pub fn search(&self, text: String) {
+        let frequency: HashMap<String, u32> = term_frequency(&text);
         for i in 0..self.documents.len() {
             let relation = relation(&frequency, &self.documents[i].1);
             if relation != 0.0 {
@@ -24,7 +24,7 @@ impl Indexer {
     }
 }
 
-fn term_frequency(text: &str) -> HashMap<String, u32> {
+fn term_frequency(text: &String) -> HashMap<String, u32> {
     let words: Vec<&str> = text.split(" ").collect();
     let mut freq: HashMap<String, u32> = HashMap::new();
     for word in &words {

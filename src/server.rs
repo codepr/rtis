@@ -1,7 +1,7 @@
-use std::thread;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 use std::collections::HashMap;
+use crate::indexer;
 
 type Addr = (String, u32);
 
@@ -29,20 +29,53 @@ struct Request {
 }
 
 pub struct Server {
-    addr: Addr
+    addr: Addr,
+    indexer: indexer::Indexer
 }
 
 impl Server {
 
-    pub fn new(addr: Addr) -> Server { Server { addr: addr } }
+    pub fn new(addr: Addr, indexer: indexer::Indexer) -> Server {
+        Server {
+            addr: addr,
+            indexer: indexer
+        }
+    }
 
-    pub fn start(&self) {
+    pub fn start(&mut self) {
         let addr = format!("{}:{}", self.addr.0, self.addr.1);
         let listener = TcpListener::bind(addr).unwrap();
         for stream in listener.incoming() {
-            thread::spawn(|| handle_connection(stream.unwrap()));
+            self.handle_connection(stream.unwrap());
         }
     }
+
+    fn handle_connection(&mut self, mut stream: TcpStream) {
+        let mut buffer = [0; 512];
+        stream.read(&mut buffer).unwrap();
+        let reqstring = String::from_utf8_lossy(&buffer[..]);
+        let response = match parse_request(&reqstring) {
+            Ok(r) => self.handle_request(r),
+            Err(e) => handle_error(e)
+        };
+        send_response(stream, response.as_bytes());
+    }
+
+    fn handle_request(&mut self, request: Request) -> String {
+        match request.method {
+            HTTP::Get => {
+                self.indexer.search(request.body);
+                "HTTP/1.1 200 OK\r\n\r\n".to_string()
+            },
+            HTTP::Post => {
+                self.indexer.add(request.body);
+                "HTTP/1.1 200 OK\r\n\r\n".to_string()
+            },
+            HTTP::Put => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
+            HTTP::Delete => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
+        }
+    }
+
 }
 
 fn parse_request(request: &str) -> Result<Request, HTTPError> {
@@ -94,30 +127,10 @@ fn parse_request(request: &str) -> Result<Request, HTTPError> {
     };
 }
 
-fn handle_connection(mut stream: TcpStream) {
-    let mut buffer = [0; 512];
-    stream.read(&mut buffer).unwrap();
-    let reqstring = String::from_utf8_lossy(&buffer[..]);
-    let response = match parse_request(&reqstring) {
-        Ok(r) => handle_request(r),
-        Err(e) => handle_error(e)
-    };
-    send_response(stream, response.as_bytes());
-}
-
 fn handle_error(err: HTTPError) -> String {
     match err {
         HTTPError::NotFound => "HTTP/1.1 404 NOT FOUND\r\n\r\n".to_string(),
         HTTPError::MethodNotAllowed => "HTTP/1.1 405 METHOD NOT ALLOWED\r\n\r\n".to_string()
-    }
-}
-
-fn handle_request(request: Request) -> String {
-    match request.method {
-        HTTP::Get => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
-        HTTP::Post => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
-        HTTP::Put => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
-        HTTP::Delete => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
     }
 }
 
