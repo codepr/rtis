@@ -1,6 +1,7 @@
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 use std::collections::HashMap;
+use std::time::Instant;
 use crate::indexer;
 
 type Addr = (String, u32);
@@ -64,11 +65,15 @@ impl Server {
     fn handle_request(&mut self, request: Request) -> String {
         match request.method {
             HTTP::Get => {
+                let mut response = "HTTP/1.1 200 OK\r\n\r\n".to_string();
+                let now = Instant::now();
                 let results = self.indexer.search(request.body);
+                response.push_str(&format!("{}\r\n", now.elapsed().as_secs_f64()));
                 for (relation, word) in results.unwrap().iter() {
-                    println!("{} {}", relation, word);
+                    response.push_str(&format!("{}:{}", relation, word));
                 }
-                "HTTP/1.1 200 OK\r\n\r\n".to_string()
+                response.push_str(CRLF);
+                response
             },
             HTTP::Post => {
                 self.indexer.add(request.body);
