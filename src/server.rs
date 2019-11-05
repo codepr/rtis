@@ -98,16 +98,19 @@ fn handle_connection(mut stream: TcpStream) {
     let request = match parse_request(&reqstring) {
         Ok(_) => {
             let response = "HTTP/1.1 200 OK\r\n\r\n";
-            stream.write(response.as_bytes()).unwrap();
-            stream.flush().unwrap();
+            send_response(stream, response.as_bytes());
         },
         Err(e) => {
             let response = match e {
                 HTTPError::NotFound => "HTTP/1.1 404 NOT FOUND\r\n\r\n",
                 HTTPError::MethodNotAllowed => "HTTP/1.1 405 METHOD NOT ALLOWED\r\n\r\n"
             };
-            stream.write(response.as_bytes()).unwrap();
-            stream.flush().unwrap();
+            send_response(stream, response.as_bytes());
         }
     };
+}
+
+fn send_response(mut stream: TcpStream, response: &[u8]) {
+    stream.write(response).unwrap();
+    stream.flush().unwrap();
 }
