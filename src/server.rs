@@ -56,7 +56,7 @@ impl Server {
         let reqstring = String::from_utf8_lossy(&buffer[..]);
         let response = match parse_request(&reqstring) {
             Ok(r) => self.handle_request(r),
-            Err(e) => handle_error(e)
+            Err(e) => self.handle_error(e)
         };
         send_response(stream, response.as_bytes());
     }
@@ -64,7 +64,10 @@ impl Server {
     fn handle_request(&mut self, request: Request) -> String {
         match request.method {
             HTTP::Get => {
-                self.indexer.search(request.body);
+                let results = self.indexer.search(request.body);
+                for (relation, word) in results.unwrap().iter() {
+                    println!("{} {}", relation, word);
+                }
                 "HTTP/1.1 200 OK\r\n\r\n".to_string()
             },
             HTTP::Post => {
@@ -73,6 +76,13 @@ impl Server {
             },
             HTTP::Put => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
             HTTP::Delete => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
+        }
+    }
+
+    fn handle_error(&self, err: HTTPError) -> String {
+        match err {
+            HTTPError::NotFound => "HTTP/1.1 404 NOT FOUND\r\n\r\n".to_string(),
+            HTTPError::MethodNotAllowed => "HTTP/1.1 405 METHOD NOT ALLOWED\r\n\r\n".to_string()
         }
     }
 
@@ -125,13 +135,6 @@ fn parse_request(request: &str) -> Result<Request, HTTPError> {
             }
         }
     };
-}
-
-fn handle_error(err: HTTPError) -> String {
-    match err {
-        HTTPError::NotFound => "HTTP/1.1 404 NOT FOUND\r\n\r\n".to_string(),
-        HTTPError::MethodNotAllowed => "HTTP/1.1 405 METHOD NOT ALLOWED\r\n\r\n".to_string()
-    }
 }
 
 fn send_response(mut stream: TcpStream, response: &[u8]) {

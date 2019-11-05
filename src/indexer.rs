@@ -13,13 +13,19 @@ impl Indexer {
         self.documents.push((document, freq));
     }
 
-    pub fn search(&self, text: String) {
+    pub fn search(&self, text: String) -> Option<Vec<(f64, &String)>> {
         let frequency: HashMap<String, u32> = term_frequency(&text);
-        for i in 0..self.documents.len() {
-            let relation = relation(&frequency, &self.documents[i].1);
+        let mut results = Vec::new();
+        for (word, freq) in self.documents.iter() {
+            let relation = relation(&frequency, &freq);
             if relation != 0.0 {
-                println!("{} {}", relation, self.documents[i].0)
+                results.push((relation, word));
             }
+        }
+        if results.is_empty() {
+            None
+        } else {
+            Some(results)
         }
     }
 }
