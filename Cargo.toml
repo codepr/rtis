@@ -1,6 +1,6 @@
 [package]
-name = "ris"
-version = "0.1.0"
+name = "rtis"
+version = "0.0.5"
 authors = ["Andrea <a.g.baldan@gmail.com>"]
 edition = "2018"
 

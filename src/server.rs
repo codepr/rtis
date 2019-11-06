@@ -47,7 +47,7 @@ impl Response {
                 json.push_str(&self.header);
                 json.push_str("{\"response_time\": ");
                 json.push_str(&format!("{},", self.response_time.unwrap_or(0.0)));
-                json.push_str(&format!("\"results\": [{}", b));
+                json.push_str(&format!("\"results\": [{}", b.replace("\n", " ")));
                 json.push_str("]}");
                 json.push_str(CRLF);
                 json
