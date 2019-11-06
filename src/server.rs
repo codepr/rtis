@@ -7,6 +7,9 @@ use crate::indexer;
 type Addr = (String, u32);
 
 const CRLF: &str = "\r\n\r\n";
+const OK: &str = "HTTP/1.1 200 OK\r\n\r\n";
+const E_NOT_FOUND: &str = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
+const E_METHOD_NOT_ALLOWED: &str = "HTTP/1.1 405 METHOD NOT ALLOWED\r\n\r\n";
 
 #[derive(Copy, Clone, Debug)]
 enum HTTP {
@@ -27,6 +30,31 @@ struct Request {
     method: HTTP,
     headers: HashMap<String, String>,
     body: String
+}
+
+struct Response {
+    header: String,
+    body: Option<String>,
+    response_time: Option<f64>
+}
+
+impl Response {
+
+    pub fn to_json(&self) -> String {
+        return match &self.body {
+            Some(b) => {
+                let mut json = String::new();
+                json.push_str(&self.header);
+                json.push_str("{\"response_time\": ");
+                json.push_str(&format!("{},", self.response_time.unwrap_or(0.0)));
+                json.push_str(&format!("\"results\": [{}", b));
+                json.push_str("]}");
+                json.push_str(CRLF);
+                json
+            },
+            None => String::from(&self.header)
+        };
+    }
 }
 
 pub struct Server {
@@ -59,38 +87,55 @@ impl Server {
             Ok(r) => self.handle_request(r),
             Err(e) => self.handle_error(e)
         };
-        send_response(stream, response.as_bytes());
+        send_response(stream, response);
     }
 
-    fn handle_request(&mut self, request: Request) -> String {
-        match request.method {
+    fn handle_request(&mut self, request: Request) -> Response {
+        return match request.method {
             HTTP::Get => {
-                let mut response = "HTTP/1.1 200 OK\r\n\r\n".to_string();
+                let header = OK.to_string();
                 let now = Instant::now();
                 let results = self.indexer.search(request.body);
-                response.push_str(&format!("{}\r\n", now.elapsed().as_secs_f64()));
-                for (relation, word) in results.unwrap().iter() {
-                    response.push_str(&format!("{}:{}", relation, word));
+                let mut body: String = results
+                    .unwrap()
+                    .iter()
+                    .fold("".to_string(), |mut s, (_, b)| {s.push_str(&format!("\"{}\",", *b)); s});
+                body.pop();
+                Response {
+                    header: header,
+                    body: Some(body),
+                    response_time: Some(now.elapsed().as_secs_f64())
                 }
-                response.push_str(CRLF);
-                response
             },
             HTTP::Post => {
                 self.indexer.add(request.body);
-                "HTTP/1.1 200 OK\r\n\r\n".to_string()
+                Response { header: OK.to_string(), body: None, response_time: None }
             },
-            HTTP::Put => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
-            HTTP::Delete => "HTTP/1.1 200 OK\r\n\r\n".to_string(),
-        }
+            HTTP::Put | HTTP::Delete =>
+                Response {
+                    header: OK.to_string(),
+                    body: None,
+                    response_time: None
+                },
+        };
     }
 
-    fn handle_error(&self, err: HTTPError) -> String {
+    fn handle_error(&self, err: HTTPError) -> Response {
         match err {
-            HTTPError::NotFound => "HTTP/1.1 404 NOT FOUND\r\n\r\n".to_string(),
-            HTTPError::MethodNotAllowed => "HTTP/1.1 405 METHOD NOT ALLOWED\r\n\r\n".to_string()
+            HTTPError::NotFound =>
+                Response {
+                    header: E_NOT_FOUND.to_string(),
+                    body: None,
+                    response_time: None
+                },
+            HTTPError::MethodNotAllowed =>
+                Response {
+                    header: E_METHOD_NOT_ALLOWED.to_string(),
+                    body: None,
+                    response_time: None
+                }
         }
     }
-
 }
 
 fn parse_request(request: &str) -> Result<Request, HTTPError> {
@@ -100,11 +145,11 @@ fn parse_request(request: &str) -> Result<Request, HTTPError> {
          ("PUT", HTTP::Put),
          ("DELETE", HTTP::Delete)].iter().cloned().collect();
     let reqfields: Vec<&str> = request.split(CRLF).collect();
-    let method = valid_methods.get(
+    let method: Option<&HTTP> = valid_methods.get(
         &reqfields[0]
         .split_whitespace()
         .next()
-        .unwrap_or(""));
+        .unwrap());
     let route = match reqfields[0].split(" ").nth(1) {
         Some(r) => if r == "/" { None } else { Some(r) },
         None => None
@@ -127,7 +172,7 @@ fn parse_request(request: &str) -> Result<Request, HTTPError> {
     return route.map_or(retval, |_| Err(HTTPError::NotFound));
 }
 
-fn send_response(mut stream: TcpStream, response: &[u8]) {
-    stream.write(response).unwrap();
+fn send_response(mut stream: TcpStream, response: Response) {
+    stream.write(response.to_json().as_bytes()).unwrap();
     stream.flush().unwrap();
 }
