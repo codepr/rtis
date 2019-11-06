@@ -71,7 +71,7 @@ impl Server {
         }
     }
 
-    pub fn start(&mut self) {
+    pub fn serve(&mut self) {
         let addr = format!("{}:{}", self.addr.0, self.addr.1);
         let listener = TcpListener::bind(addr).unwrap();
         for stream in listener.incoming() {
@@ -80,7 +80,7 @@ impl Server {
     }
 
     fn handle_connection(&mut self, mut stream: TcpStream) {
-        let mut buffer = [0; 512];
+        let mut buffer = [0; 8192];
         stream.read(&mut buffer).unwrap();
         let reqstring = String::from_utf8_lossy(&buffer[..]);
         let response = match parse_request(&reqstring) {
@@ -95,10 +95,11 @@ impl Server {
             HTTP::Get => {
                 let header = OK.to_string();
                 let now = Instant::now();
-                let results = self.indexer.search(request.body);
+                let mut results = self.indexer.search(request.body).unwrap_or(vec![]);
+                results.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
                 let mut body: String = results
-                    .unwrap()
                     .iter()
+                    .rev()
                     .fold("".to_string(), |mut s, (_, b)| {s.push_str(&format!("\"{}\",", *b)); s});
                 body.pop();
                 Response {

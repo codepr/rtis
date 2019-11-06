@@ -22,11 +22,7 @@ impl Indexer {
                 results.push((relation, word));
             }
         }
-        if results.is_empty() {
-            None
-        } else {
-            Some(results)
-        }
+        if results.is_empty() { None } else { Some(results) }
     }
 }
 
