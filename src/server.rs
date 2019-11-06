@@ -106,13 +106,7 @@ fn parse_request(request: &str) -> Result<Request, HTTPError> {
         .next()
         .unwrap_or(""));
     let route = match reqfields[0].split(" ").nth(1) {
-        Some(r) => {
-            if r == "/" {
-                None
-            } else {
-                Some(r)
-            }
-        },
+        Some(r) => if r == "/" { None } else { Some(r) },
         None => None
     };
     let mut headers: HashMap<String, String> = HashMap::new();
@@ -123,23 +117,14 @@ fn parse_request(request: &str) -> Result<Request, HTTPError> {
         let kv: Vec<&str> = hdr_lines[i].split(":").collect();
         headers.insert(kv[0].to_string(), kv[1].to_string());
     }
-    return match route {
-        Some(_) => Err(HTTPError::NotFound),
-        None => {
-            match method {
-                Some(m) => {
-                    Ok(
-                        Request {
-                            method: *m,
-                            headers: headers,
-                            body: reqfields[1].trim_matches(char::from(0)).to_string()
-                        }
-                    )
-                },
-                None => Err(HTTPError::MethodNotAllowed)
-            }
-        }
-    };
+    let body = reqfields[1].trim_matches(char::from(0)).to_string();
+    // Method not in (GET, POST, PUT, DELETE)? return 405 METHOD NOT ALLOWED
+    let retval = method.map_or(
+        Err(HTTPError::MethodNotAllowed),
+        |m| Ok(Request { method: *m, headers: headers, body: body })
+    );
+    // Route present ("/" is considered empty route)? return 404 NOT FOUND
+    return route.map_or(retval, |_| Err(HTTPError::NotFound));
 }
 
 fn send_response(mut stream: TcpStream, response: &[u8]) {
