@@ -93,19 +93,29 @@ impl Server {
     fn handle_request(&mut self, request: Request) -> Response {
         return match request.method {
             HTTP::Get => {
-                let header = OK.to_string();
                 let now = Instant::now();
-                let mut results = self.indexer.search(request.body).unwrap_or(vec![]);
-                results.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-                let mut body: String = results
-                    .iter()
-                    .rev()
-                    .fold("".to_string(), |mut s, (_, b)| {s.push_str(&format!("\"{}\",", *b)); s});
-                body.pop();
-                Response {
-                    header: header,
-                    body: Some(body),
-                    response_time: Some(now.elapsed().as_secs_f64())
+                match self.indexer.search(request.body) {
+                    Some(mut r) => {
+                        r.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+                        let mut body = r
+                            .iter()
+                            .rev()
+                            .fold(
+                                "".to_string(),
+                                |mut s, (_, b)| {s.push_str(&format!("\"{}\",", *b)); s}
+                            );
+                        body.pop();
+                        Response {
+                            header: OK.to_string(),
+                            body: Some(body),
+                            response_time: Some(now.elapsed().as_secs_f64())
+                        }
+                    },
+                    None => Response {
+                        header: E_NOT_FOUND.to_string(),
+                        body: None,
+                        response_time: None
+                    }
                 }
             },
             HTTP::Post => {
@@ -114,7 +124,7 @@ impl Server {
             },
             HTTP::Put | HTTP::Delete =>
                 Response {
-                    header: OK.to_string(),
+                    header: E_METHOD_NOT_ALLOWED.to_string(),
                     body: None,
                     response_time: None
                 },
